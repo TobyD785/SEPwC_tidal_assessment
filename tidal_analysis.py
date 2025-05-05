@@ -35,7 +35,7 @@ def read_tidal_data(filename):
         df['Residual'] = pd.to_numeric(df['Residual'], errors='coerce')
        
         # Drop original text columns
-        df = df.drop(columns=['Cycle', 'Date', 'Time'])
+        df = df.drop(columns=['Cycle', 'Date'])
 
         # Set datetime as index
         df = df.set_index('Datetime')
@@ -89,9 +89,18 @@ def extract_section_remove_mean(start, end, data):
 
 
 def join_data(data1, data2):
+    if data1 is None:
+        return data2
+    if data2 is None:
+        return data1
 
-    return 
-
+    print("Dataframes joined successfully.")
+    # Perform an outer join, which will include all columns and handle mismatches with NaN
+    joined_data = pd.concat([data1, data2], axis=0, join='outer').sort_index()
+    
+    print(joined_data)
+    
+    return joined_data
 
 
 def sea_level_rise(data):

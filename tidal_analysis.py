@@ -77,10 +77,24 @@ def process_directory(dirname):
         return None
     
 def extract_single_year_remove_mean(year, data):
-   
+    year = int(year)
 
-    return 
+    # Filter data for the given year
+    data_year = data[data.index.year == year]
 
+    # Return empty DataFrame if year not found
+    if data_year.empty:
+        return data_year
+
+    # Drop NaNs before mean subtraction
+    data_year = data_year.copy()
+    valid = data_year['Sea Level'].notna()
+    mean_sea_level = data_year.loc[valid, 'Sea Level'].mean()
+
+    # Subtract mean only where Sea Level is valid
+    data_year.loc[valid, 'Sea Level'] -= mean_sea_level
+
+    return data_year
 
 def extract_section_remove_mean(start, end, data):
 
@@ -97,9 +111,7 @@ def join_data(data1, data2):
     print("Dataframes joined successfully.")
     # Perform an outer join, which will include all columns and handle mismatches with NaN
     joined_data = pd.concat([data1, data2], axis=0, join='outer').sort_index()
-    
-    print(joined_data)
-    
+
     return joined_data
 
 

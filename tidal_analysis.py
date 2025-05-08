@@ -97,10 +97,26 @@ def extract_single_year_remove_mean(year, data):
     return data_year
 
 def extract_section_remove_mean(start, end, data):
+    try:
+        start_dt = pd.to_datetime(start, format="%Y%m%d")
+        end_dt = pd.to_datetime(end, format="%Y%m%d")
+    except ValueError:
+        return pd.DataFrame(columns=data.columns)
 
+    # Create complete hourly time index
+    full_index = pd.date_range(start=start_dt, end=end_dt + pd.Timedelta(hours=23), freq='h')
 
-    return 
+    # Filter and reindex to full hourly range
+    section = data.loc[data.index.intersection(full_index)].copy()
+    section = section.reindex(full_index)
 
+    # Subtract mean only from valid entries
+    if 'Sea Level' in section.columns:
+        valid = section['Sea Level'].notna()
+        mean = section.loc[valid, 'Sea Level'].mean()
+        section.loc[valid, 'Sea Level'] -= mean
+
+    return section
 
 def join_data(data1, data2):
     if data1 is None:

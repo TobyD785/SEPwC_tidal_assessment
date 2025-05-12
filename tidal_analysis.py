@@ -6,6 +6,17 @@ import numpy as np
 import pandas as pd
 import os
 import glob
+import pytz
+import datetime
+
+TIDAL_CONSTITUENT_FREQS = {
+    'M2': 1.9322736,
+    'S2': 2.0000000,
+    'N2': 1.89598186,
+    'K1': 0.99856143,
+    'O1': 0.9295357,
+    # Add more as needed
+}
 
 def read_tidal_data(filename):
     try:
@@ -137,9 +148,49 @@ def sea_level_rise(data):
     return 
 
 def tidal_analysis(data, constituents, start_datetime):
+    # Ensure datetime index and drop NaNs
+    df = data.dropna(subset=['Sea Level'])
+    if df.empty:
+        return [], []
 
+    # Make df index tz-aware if it's tz-naive
+    if df.index.tz is None:
+        df.index = df.index.tz_localize(start_datetime.tzinfo)
 
-    return 
+    # Convert datetime index to time in days since start
+    time_hours = (df.index - start_datetime).total_seconds() / 3600.0
+    time_days = time_hours / 24.0
+    sea_level = df['Sea Level'].values
+
+    # Build design matrix with sin/cos terms
+    X = []
+    for name in constituents:
+        freq = TIDAL_CONSTITUENT_FREQS.get(name)
+        if freq is None:
+            raise ValueError(f"Unknown tidal constituent: {name}")
+        omega = 2 * np.pi * freq
+        X.append(np.cos(omega * time_days))
+        X.append(np.sin(omega * time_days))
+
+    X = np.column_stack(X)
+
+    # Solve least squares
+    coeffs, _, _, _ = np.linalg.lstsq(X, sea_level, rcond=None)
+
+    amp = []
+    pha = []
+    for i in range(0, len(coeffs), 2):
+        a, b = coeffs[i], coeffs[i + 1]
+        amplitude = np.sqrt(a**2 + b**2)
+        phase = np.arctan2(-b, a) * 180 / np.pi
+        if phase < 0:
+            phase += 360
+        amp.append(amplitude)
+        pha.append(phase)
+
+    return amp, pha
+
+ 
 
 def get_longest_contiguous_data(data):
 

@@ -131,33 +131,61 @@ def extract_section_remove_mean(start, end, data):
 
     return section
 
-def join_data(data1, data2):
-    if data1 is None:
-        return data2
-    if data2 is None:
-        return data1
 
-    print("Dataframes joined successfully.")
-    # Perform an outer join, which will include all columns and handle mismatches with NaN
-    joined_data = pd.concat([data1, data2], axis=0, join='outer').sort_index()
+def join_data(*data_frames):
+    """
+    Joins multiple dataframes. If any dataframe is None, it's skipped.
+    Performs an outer join on all dataframes, aligning columns and 
+    handling mismatches with NaN.
 
+    Parameters:
+    *data_frames (pd.DataFrame): Dataframes to be joined. Can handle multiple dataframes.
+
+    Returns:
+    pd.DataFrame: The resulting dataframe after joining all provided dataframes.
+    """
+    # Filter out None values from the input dataframes
+    data_frames = [df for df in data_frames if df is not None]
+    
+    if not data_frames:
+        print("No dataframes to join.")
+        return None
+
+    # Perform the join by concatenating all dataframes along rows (axis=0)
+    joined_data = pd.concat(data_frames, axis=0, join='outer').sort_index()
+
+    print(f"Dataframes joined successfully. {len(data_frames)} dataframes joined.")
     return joined_data
 
+
 def get_longest_contiguous_data(data):
-    # Only consider valid sea level entries
+    """
+    Finds the longest contiguous block of valid sea level data in the given dataframe.
+    
+    Parameters:
+    data (pd.DataFrame): Dataframe containing sea level data.
+    
+    Returns:
+    pd.DataFrame: The longest contiguous block of valid sea level data.
+    """
+    if data is None or 'Sea Level' not in data.columns:
+        print("Invalid data or 'Sea Level' column missing.")
+        return pd.DataFrame()
+
+    # Only consider valid sea level entries (non-NaN values)
     valid = data['Sea Level'].notna()
 
-    # Identify contiguous blocks using a run-length approach
-    # Group rows where valid value sequences are uninterrupted
+    # Identify contiguous blocks of valid data
     group_id = (valid != valid.shift()).cumsum()
 
-    # Filter only valid blocks
+    # Filter only valid blocks (those without NaN in 'Sea Level')
     valid_blocks = data[valid].groupby(group_id)
 
     # Find the block with the maximum length
     longest_block = max(valid_blocks, key=lambda x: len(x[1]))[1]
 
     return longest_block
+
 
 
 def sea_level_rise(data):

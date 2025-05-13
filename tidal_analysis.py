@@ -8,6 +8,8 @@ import os
 import glob
 import pytz
 import datetime
+from scipy.stats import linregress
+import matplotlib.dates as mdates
 
 TIDAL_CONSTITUENT_FREQS = {
     'M2': 1.9322736,
@@ -143,9 +145,21 @@ def join_data(data1, data2):
 
 
 def sea_level_rise(data):
+        # Drop rows with NaN sea levels
+    df = data.dropna(subset=['Sea Level'])
 
-                                                     
-    return 
+    if df.empty:
+        raise ValueError("No valid sea level data to analyze.")
+
+    # Convert datetime index to numerical format (days since epoch)
+    x = mdates.date2num(df.index.to_pydatetime())
+    y = df['Sea Level'].values
+
+    # Perform linear regression
+    result = linregress(x, y)
+
+    return result.slope, result.pvalue
+
 
 def tidal_analysis(data, constituents, start_datetime):
     # Ensure datetime index and drop NaNs

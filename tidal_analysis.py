@@ -143,22 +143,39 @@ def join_data(data1, data2):
 
     return joined_data
 
+def get_longest_contiguous_data(data):
+    # Only consider valid sea level entries
+    valid = data['Sea Level'].notna()
+
+    # Identify contiguous blocks using a run-length approach
+    # Group rows where valid value sequences are uninterrupted
+    group_id = (valid != valid.shift()).cumsum()
+
+    # Filter only valid blocks
+    valid_blocks = data[valid].groupby(group_id)
+
+    # Find the block with the maximum length
+    longest_block = max(valid_blocks, key=lambda x: len(x[1]))[1]
+
+    return longest_block
+
 
 def sea_level_rise(data):
-        # Drop rows with NaN sea levels
-    df = data.dropna(subset=['Sea Level'])
+    # Use only the longest valid block of continuous hourly Sea Level data
+    longest = get_longest_contiguous_data(data)
 
-    if df.empty:
-        raise ValueError("No valid sea level data to analyze.")
+    if longest.empty:
+        raise ValueError("No valid contiguous sea level data to analyze.")
 
     # Convert datetime index to numerical format (days since epoch)
-    x = mdates.date2num(df.index.to_pydatetime())
-    y = df['Sea Level'].values
+    x = mdates.date2num(longest.index.to_pydatetime())
+    y = longest['Sea Level'].values
 
     # Perform linear regression
     result = linregress(x, y)
 
     return result.slope, result.pvalue
+
 
 
 def tidal_analysis(data, constituents, start_datetime):
@@ -204,12 +221,6 @@ def tidal_analysis(data, constituents, start_datetime):
 
     return amp, pha
 
- 
-
-def get_longest_contiguous_data(data):
-
-
-    return 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

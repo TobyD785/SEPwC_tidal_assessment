@@ -10,10 +10,11 @@ calculating sea level rise, and performing basic tidal analysis.
 import argparse
 import os
 import glob
-from datetime import datetime
+import datetime
 import pytz
 from scipy.stats import linregress
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -91,7 +92,7 @@ def process_directory(dirname):
 
     Returns:
         pd.DataFrame: Combined dataframe with data from all files in the directory, 
-        or None if no valid data is found.
+                      or None if no valid data is found.
     """
     txt_files = glob.glob(os.path.join(dirname, "*.txt"))
 
@@ -113,9 +114,14 @@ def process_directory(dirname):
             print(f"Error processing {file}: {e}")
 
     if all_data:
-        c_data = pd.concat(all_data).sort_index()
+        # Combine all DataFrames and sort by index
+        combined_data = pd.concat(all_data).sort_index()
+
+        # Remove duplicate timestamps (keep first occurrence)
+        combined_data = combined_data[~combined_data.index.duplicated(keep='first')]
+
         print("All successfully processed .txt files combined.")
-        return c_data
+        return combined_data
 
     return None
 
@@ -168,6 +174,9 @@ def extract_section_remove_mean(start, end, data):
     except ValueError:
         return pd.DataFrame(columns=data.columns)
 
+    # Drop duplicate index entries BEFORE filtering anything
+    data = data[~data.index.duplicated(keep='first')]
+
     # Create complete hourly time index
     full_index = pd.date_range(start=start_dt, end=end_dt + pd.Timedelta(hours=23), freq='h')
 
@@ -206,6 +215,32 @@ def join_data(*data_frames):
 
     print(f"Dataframes joined successfully. {len(valid_data_frames)} dataframes joined.")
     return joined_data
+
+
+def get_longest_contiguous_data(data):
+    """
+    Extracts the longest contiguous block of valid (non-NaN) sea level data.
+
+    Args:
+        data (pd.DataFrame): Dataframe containing a 'Sea Level' column with a datetime index.
+
+    Returns:
+        pd.DataFrame: A subset of the original data containing the longest uninterrupted 
+                      block of valid sea level values.
+    """
+    # Identify rows where 'Sea Level' is valid
+    valid = data['Sea Level'].notna()
+
+    # Use run-length encoding to detect changes between valid/invalid states
+    group_id = (valid != valid.shift()).cumsum()
+
+    # Group valid data by contiguous blocks
+    valid_blocks = data[valid].groupby(group_id)
+
+    # Find the longest block
+    longest_block = max(valid_blocks, key=lambda x: len(x[1]))[1]
+
+    return longest_block
 
 
 def sea_level_rise(data):
@@ -267,10 +302,10 @@ def tidal_analysis(data, constituents, start_datetime):
 
     # Build design matrix with sin/cos terms
     trig = []
-    for name in constituents:
-        freq = TIDAL_CONSTITUENT_FREQS.get(name)
+    for tom in constituents:
+        freq = TIDAL_CONSTITUENT_FREQS.get(tom)
         if freq is None:
-            raise ValueError(f"Unknown tidal constituent: {name}")
+            raise ValueError(f"Unknown tidal constituent: {tom}")
         omega = 2 * np.pi * freq
         trig.append(np.cos(omega * time_days))
         trig.append(np.sin(omega * time_days))
@@ -282,8 +317,8 @@ def tidal_analysis(data, constituents, start_datetime):
 
     amp = []
     pha = []
-    for i in range(0, len(coeffs), 2):
-        a, b = coeffs[i], coeffs[i + 1]
+    for p in range(0, len(coeffs), 2):
+        a, b = coeffs[p], coeffs[p + 1]
         amplitude = np.sqrt(a**2 + b**2)
         phase = np.arctan2(-b, a) * 180 / np.pi
         if phase < 0:
@@ -315,44 +350,34 @@ if __name__ == '__main__':
     args = parser.parse_args()
     dirname = args.directory
 
-    combined_data = process_directory(dirname)  # Store the result
+    combined_data = process_directory(dirname)
 
     if combined_data is not None:
-        # Example usage of the functions, assuming you have data loaded
-        # Replace this with how you want to use the functions
-        print("Example Usage (requires data in combined_data):")
-        print("-" * 40)
+        longest_data = get_longest_contiguous_data(combined_data)
 
-        year_data = extract_single_year_remove_mean(2010, combined_data)
-        if not year_data.empty:
-            print(f"Data for year 2010 (first 5 rows):\n{year_data.head()}")
-        else:
-            print("No data for year 2010")
+        # Calculate and print sea level rise
+        slope, p_value = sea_level_rise(longest_data)
+        print("\n--- TIDAL ANALYSIS SUMMARY ---")
+        print(f"Sea level rise: {slope:.6f} (units/day)")
+        print(f"p-value: {p_value:.3f}")
 
-        section_data = extract_section_remove_mean("20100101", "20100110", combined_data)
-        if not section_data.empty:
-            print(f"Data for date range (first 5 rows):\n{section_data.head()}")
-        else:
-            print("No data for the date range")
+        # Perform tidal analysis on M2 and S2
+        constituents = ['M2', 'S2']
+        start_time = longest_data.index.min()
+        amplitudes, phases = tidal_analysis(longest_data, constituents, start_time)
+        for i, name in enumerate(constituents):
+            print(f"{name} - Amplitude: {amplitudes[i]:.3f}, Phase: {phases[i]:.1f}°")
 
-        slope, p_value = sea_level_rise(combined_data)
-        if slope is not None and p_value is not None:
-            print(f"Sea level rise rate: {slope:.4f} mm/year, p-value: {p_value:.3f}")
-        else:
-            print("Could not calculate sea level rise.")
+        # Plot sea level over time
+        plt.figure(figsize=(12, 4))
+        plt.plot(longest_data.index, longest_data['Sea Level'], label='Sea Level')
+        plt.title("Sea Level Over Time (Longest Clean Segment)")
+        plt.xlabel("Date")
+        plt.ylabel("Sea Level")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
 
-        if not combined_data.empty:
-            start_time = combined_data.index.min()
-            constituents = ['M2', 'S2']
-            amplitudes, phases = tidal_analysis(combined_data, constituents, start_time)
-            if amplitudes and phases:
-                print(f"Tidal analysis for constituents {constituents}:")
-                for i, constituent in enumerate(constituents):
-                    print(f"  {constituent}: Amplitude = {amplitudes[i]:.2f},"
-                          f"Phase = {phases[i]:.2f}")
-            else:
-                print("Tidal analysis failed.")
-        else:
-            print("No data available for tidal analysis.")
     else:
         print("No data to process.")

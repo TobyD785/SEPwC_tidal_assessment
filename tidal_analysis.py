@@ -1,3 +1,7 @@
+# Copyright 2025 by Toby Dyer. CC BY-SA 4.0
+# Licensed under the Creative Commons Attribution-ShareAlike 4.0 International License.
+# http://creativecommons.org/licenses/by-sa/4.0/
+
 """This module provides functions for analyzing tidal data.
 
 It includes functions for reading data from text files,
